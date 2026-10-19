@@ -7,7 +7,7 @@ public sealed class ShellWrapperTests {
     [InlineData("bash")]
     [InlineData("zsh")]
     public async Task Shell_wrapper_changes_directory_only_after_valid_success_json(string shell) {
-        if (!CommandExists(shell)) {
+        if (OperatingSystem.IsWindows() || !CommandExists(shell)) {
             return;
         }
 

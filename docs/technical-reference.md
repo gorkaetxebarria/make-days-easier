@@ -127,7 +127,7 @@ Verified on macOS: when `--ide` or the id is invalid, System.CommandLine prints 
   - `CommandContractTests` (9 cases): init persistence and rejection, `pr` without org, JSON purity, text ending with path, ADO failure without JSON, `--ide vs` rejection on non-Windows, IDE warning, Windows fallback.
   - `RepositoryPreparationTests` (6): equivalent remotes, clone into empty cwd then fetch and track, folder collision without mutation, dirty stop before fetch, fetch failure stops checkout, unsupported URL.
   - `ExternalIntegrationTests` (2): az failure never echoes a token; ADO 401 via a stub handler.
-  - `ShellWrapperTests` (2 methods): bash and zsh behavior (skipped when the shell is absent); PowerShell wrapper checked statically.
+  - `ShellWrapperTests` (2 methods): bash and zsh behavior (POSIX hosts only, skipped when the shell is absent); PowerShell wrapper checked statically.
 - Fakes: `FakeAdoClient`, `FakeGitClient`, `FakeIdeLauncher`, `FakeFileSystem`, `FakePlatform`, `MemoryConfigurationStore`, `RecordingProcessLauncher`, `StubHttpHandler`. Scratch directories live under `artifacts/`.
 - **No live Azure DevOps coverage.** Nothing in the suite contacts `dev.azure.com`.
 - Local run (macOS, this change): `dotnet test Mde.slnx -c Release --no-restore` → 24 passed, 0 failed.

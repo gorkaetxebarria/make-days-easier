@@ -5,7 +5,7 @@ namespace Mde.Tool.Tests;
 public sealed class RepositoryPreparationTests {
     private const string CloneUrl = "https://dev.azure.com/contoso/project/_git/repo";
     private const string Cwd = "/work";
-    private const string Repository = "/work/repo";
+    private static readonly string Repository = Path.Combine(Cwd, "repo");
 
     [Theory]
     [InlineData("https://dev.azure.com/CONTOSO/project/_git/repo")]
