@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Mde.Tool/Mde.Tool.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Mde.Tool.Tests/Mde.Tool.Tests.csproj" />
+  </Folder>
+</Solution>
