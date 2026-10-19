@@ -51,6 +51,8 @@ jobs:
 
       - name: Plan channel and version
         id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           channel=none
           bump=none
@@ -69,7 +71,15 @@ jobs:
               channel=stable
               version="$(scripts/release/next-version.sh "$bump")"
               tag="v${version}"
-              remote_tag="$(git ls-remote --tags origin "refs/tags/${tag}")"
+              remote_tag=""
+              if api_out="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" 2>&1)"; then
+                remote_tag="present"
+              elif [[ $api_out == *"HTTP 404"* ]]; then
+                remote_tag=""
+              else
+                echo "error: could not query remote tag ${tag}: ${api_out}" >&2
+                exit 1
+              fi
               if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || [[ -n "$remote_tag" ]]; then
                 echo "error: tag ${tag} already exists; refusing to build a duplicate release" >&2
                 exit 1
