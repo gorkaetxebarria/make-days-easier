@@ -1,0 +1,24 @@
+{
+  "universe_usage_history": [
+    {
+      "universe": "descriptive",
+      "assignment_id": "mde-initial-cast-2026-10-19",
+      "used_at": "2026-10-19T07:07:00.774Z"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "mde-initial-cast-2026-10-19": {
+      "universe": "descriptive",
+      "agents": {
+        "lead": "Lead",
+        "cli": "CLI",
+        "integrations": "Integrations",
+        "tester": "Tester",
+        "release": "Release"
+      },
+      "created_at": "2026-10-19T07:07:00.774Z"
+    }
+  },
+  "transaction_id": "740fe5f0-d5c0-4877-84b4-1b126b086cef",
+  "registry_revision": 2
+}

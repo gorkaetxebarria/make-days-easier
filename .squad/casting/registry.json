@@ -1,0 +1,44 @@
+{
+  "schema": "squad-agent-provenance/v1",
+  "schema_version": 1,
+  "revision": 2,
+  "generated_at": "2026-10-19T07:07:00.774Z",
+  "agents": {
+    "lead": {
+      "persistent_name": "Lead",
+      "universe": "descriptive",
+      "created_at": "2026-10-19T07:07:00.774Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "cli": {
+      "persistent_name": "CLI",
+      "universe": "descriptive",
+      "created_at": "2026-10-19T07:07:00.774Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "integrations": {
+      "persistent_name": "Integrations",
+      "universe": "descriptive",
+      "created_at": "2026-10-19T07:07:00.774Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "tester": {
+      "persistent_name": "Tester",
+      "universe": "descriptive",
+      "created_at": "2026-10-19T07:07:00.774Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "release": {
+      "persistent_name": "Release",
+      "universe": "descriptive",
+      "created_at": "2026-10-19T07:07:00.774Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  },
+  "transaction_id": "740fe5f0-d5c0-4877-84b4-1b126b086cef"
+}

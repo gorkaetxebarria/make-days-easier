@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "agentModelOverrides": {
+    "Lead": "claude-opus-5.5",
+    "CLI": "claude-sonnet-5.5",
+    "Integrations": "gpt-5.3-codex",
+    "Tester": "gemini-4-argon",
+    "Release": "claude-haiku-5.5",
+    "Scribe": "claude-haiku-5.5"
+  }
+}

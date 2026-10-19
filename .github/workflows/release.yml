@@ -1,0 +1,136 @@
+name: Release
+
+# Stable releases: a PR merged into main. Build runs automatically; the publish
+# job waits for approval from the protected "github-packages" Environment.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build stable package
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      bump: ${{ steps.classify.outputs.bump }}
+    steps:
+      - name: Check out merged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Validate PR title and classify
+        id: classify
+        run: scripts/release/pr-title.sh "$PR_TITLE" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize skipped release
+        if: steps.classify.outputs.bump == 'none'
+        run: echo "PR type does not map to a release; title validated, nothing published." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up .NET from global.json
+        if: steps.classify.outputs.bump != 'none'
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Compute version and guard tag
+        id: version
+        if: steps.classify.outputs.bump != 'none'
+        env:
+          BUMP: ${{ steps.classify.outputs.bump }}
+        run: |
+          version="$(scripts/release/next-version.sh "$BUMP")"
+          tag="v${version}"
+          remote_tag="$(git ls-remote --tags origin "refs/tags/${tag}")"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || [[ -n "$remote_tag" ]]; then
+            echo "error: tag ${tag} already exists; refusing to build a duplicate release" >&2
+            exit 1
+          fi
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Pack global tool
+        if: steps.classify.outputs.bump != 'none'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet pack src/Mde.Tool/Mde.Tool.csproj --configuration Release --output artifacts -p:PackageVersion="$VERSION"
+
+      - name: Upload package artifact
+        if: steps.classify.outputs.bump != 'none'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+
+  publish:
+    name: Publish stable package (approval required)
+    needs: build
+    if: needs.build.outputs.bump != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: github-packages
+    permissions:
+      contents: write   # push the annotated vX.Y.Z tag
+      packages: write   # push the .nupkg to GitHub Packages
+    env:
+      PACKAGE_OWNER: ${{ github.repository_owner }}
+      VERSION: ${{ needs.build.outputs.version }}
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - name: Check out merged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts
+
+      - name: Re-check tag is still free
+        run: |
+          remote_tag="$(git ls-remote --tags origin "refs/tags/${TAG}")"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null || [[ -n "$remote_tag" ]]; then
+            echo "error: tag ${TAG} already exists; refusing to publish" >&2
+            exit 1
+          fi
+
+      - name: Publish to GitHub Packages
+        env:
+          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${PACKAGE_OWNER,,}"
+          dotnet nuget push "artifacts/Mde.Tool.${VERSION}.nupkg" \
+            --source "https://nuget.pkg.github.com/${owner}/index.json" \
+            --api-key "$NUGET_API_KEY"
+
+      - name: Create and push annotated tag
+        run: |
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "$TAG" -m "Release $TAG" HEAD
+          git push origin "refs/tags/${TAG}"
