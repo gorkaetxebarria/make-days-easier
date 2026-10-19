@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Mde.Tool.Tests;
 
@@ -7,6 +8,10 @@ public sealed class ShellWrapperTests {
     [InlineData("bash")]
     [InlineData("zsh")]
     public async Task Shell_wrapper_changes_directory_only_after_valid_success_json(string shell) {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
         if (!CommandExists(shell)) {
             return;
         }
@@ -16,7 +21,8 @@ public sealed class ShellWrapperTests {
         Directory.CreateDirectory(target);
         try {
             var mde = Path.Combine(scratch, "mde");
-            await File.WriteAllTextAsync(mde, $"#!/bin/sh\nprintf '%s\\n' '{{\"schemaVersion\":1,\"repositoryPath\":\"{target}\"}}'\n");
+            var output = JsonSerializer.Serialize(new { schemaVersion = 1, repositoryPath = target });
+            await File.WriteAllTextAsync(mde, $"#!/bin/sh\nprintf '%s\\n' '{output}'\n");
             MakeExecutable(mde);
             var script = Path.Combine(RepositoryRoot(), "scripts", "shell", "mde-pr.sh");
             var success = await RunShellAsync(shell, scratch, $"PATH='{scratch}':$PATH; . '{script}'; mde-pr 42; pwd");

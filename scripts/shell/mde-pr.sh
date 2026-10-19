@@ -22,7 +22,8 @@ mde-pr() {
   output="$(command mde pr "$pr_id" "$@" --output json)" || return $?
 
   local repository_path
-  repository_path="$(printf '%s\n' "$output" | sed -nE 's/^[[:space:]]*\{[[:space:]]*"schemaVersion"[[:space:]]*:[[:space:]]*1[[:space:]]*,[[:space:]]*"repositoryPath"[[:space:]]*:[[:space:]]*"([^"\\]+)"[[:space:]]*\}[[:space:]]*$/\1/p')"
+  repository_path="$(printf '%s\n' "$output" | sed -nE 's/^[[:space:]]*\{[[:space:]]*"schemaVersion"[[:space:]]*:[[:space:]]*1[[:space:]]*,[[:space:]]*"repositoryPath"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*\}[[:space:]]*$/\1/p')"
+  repository_path="${repository_path//\\\\/\\}"
 
   if [ -z "$repository_path" ] || [ ! -d "$repository_path" ]; then
     echo "mde-pr: unexpected output from 'mde pr'; directory not changed." >&2

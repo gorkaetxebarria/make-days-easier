@@ -34,4 +34,6 @@ jobs:
           Set-Location $env:GITHUB_WORKSPACE
           function global:mde { $global:LASTEXITCODE = 7 }
           mde-pr 42
+          if ($LASTEXITCODE -ne 7) { throw 'mde-pr did not preserve the failed command exit code.' }
+          $global:LASTEXITCODE = 0
           if ((Get-Location).Path -ne $env:GITHUB_WORKSPACE) { throw 'mde-pr changed directory after a failed command.' }
