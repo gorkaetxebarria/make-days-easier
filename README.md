@@ -31,11 +31,17 @@ mde about
 
 ## Pull request titles
 
-PR titles must match `[Work-Item-ID] type[!]: description`. The `PR title` workflow validates them; configure it as a required status check. Details and bump rules are in the [technical reference](docs/technical-reference.md#12-release-versioning-and-publishing).
+PR titles must match `[Work-Item-ID] type[!]: description`. The `Validate PR title` job in the `Build validation` workflow checks them on every PR update; configure it as a required status check. Details and bump rules are in the [technical reference](docs/technical-reference.md#12-release-versioning-and-publishing).
 
-## Versioning and publishing
+## CI and publishing
+
+Two product workflows exist:
+
+- **Build validation** (`build-validation.yml`): on every PR update, validates the title and runs restore, build, and test on Windows, macOS, and Linux. Never packages or publishes.
+- **Publish** (`publish.yml`): repeats restore, build, and test on all three OSes, then packs the tool. Only the publish job waits for approval in the `github-packages` environment.
+
+Versioning:
 
 - **Stable releases** run when a PR is merged into `main`. Only titles with a bump (`!`, `feat`, `fix`/`bug`) publish a package and tag `vX.Y.Z`.
-- **Alpha builds** run on pushes to other branches, publish `X.Y.(Z+1)-alpha.<run_id>.<run_attempt>`, and create no tags.
-- Publishing waits for approval in the `github-packages` environment.
+- **Alpha builds** run on pushes to other branches, publish `X.Y.(Z+1)-alpha.<run_id>.<run_attempt>` (the title is not read for pushes), and create no tags.
 - Known limitation: publish and tag are not atomic; see the [technical reference](docs/technical-reference.md#12-release-versioning-and-publishing) for recovery.

@@ -28,7 +28,7 @@ src/Mde.Tool/
 scripts/shell/                    mde-pr.sh (bash/zsh), mde-pr.ps1 (PowerShell)
 scripts/release/                  pr-title.sh, next-version.sh
 tests/Mde.Tool.Tests/             24 fake-driven tests
-.github/workflows/                test.yml, pr-title.yml, prerelease.yml, release.yml
+.github/workflows/                build-validation.yml (PR checks), publish.yml (packaging and publishing); Squad workflows are separate
 ```
 
 ## 3. Architecture boundaries
@@ -132,28 +132,34 @@ Verified on macOS: when `--ide` or the id is invalid, System.CommandLine prints 
 - **No live Azure DevOps coverage.** Nothing in the suite contacts `dev.azure.com`.
 - Local run (macOS, this change): `dotnet test Mde.slnx -c Release --no-restore` → 24 passed, 0 failed.
 
-### CI matrix (`.github/workflows/test.yml`)
+### CI workflows
 
-- Triggers: push and pull_request.
-- Matrix: `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`).
-- Setup: `actions/setup-dotnet@v4` with `global-json-file: global.json`.
-- Command: `dotnet test Mde.slnx --configuration Release`.
-- Windows only: runs the PowerShell wrapper with a fake `mde` function; success changes location, failure keeps it.
-- Linux and Windows results are not verified in this document; check the workflow run history.
+The product CI surface is two workflows. Squad workflows are managed separately.
+
+- **Build validation** (`.github/workflows/build-validation.yml`): runs on every pull request `opened`, `synchronize`, `reopened`, and `edited` event. It never packages or publishes.
+  - `Validate PR title` job: `scripts/release/pr-title.sh` on the PR title.
+  - `Build and test` matrix: `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`). Steps: `dotnet restore Mde.slnx`, `dotnet build Mde.slnx --configuration Release --no-restore`, `dotnet test Mde.slnx --configuration Release --no-restore`. Setup uses `actions/setup-dotnet@v4` with `global-json-file: global.json`.
+  - Windows only: runs the PowerShell wrapper with a fake `mde` function; success changes location, failure keeps it.
+  - Linux and Windows results are not verified in this document; check the workflow run history.
+- **Publish** (`.github/workflows/publish.yml`): described in section 12.
 
 ## 12. Release, versioning, and publishing
 
-- **PR titles** (`pr-title.yml`, on opened/edited/reopened): `[Work-Item-ID] type[!]: description`. ID matches `[A-Za-z0-9][A-Za-z0-9._-]*`. Types: `feat`, `fix`, `bug`, `refactor`, `perf`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert`.
-- **Bump rules:** `!` → major; `feat` → minor; `fix`/`bug` → patch; other types → no release. A `!` on any type (for example `refactor!`) is major and publishes.
-- **Stable release** (`release.yml`, on PR merged into `main`):
-  1. Build job parses the title and computes the bump. Non-publishing types only write a step summary.
-  2. For a bump, `next-version.sh` computes the version from the highest stable `vX.Y.Z` tag (pre-release tags ignored; 0.0.0 if none). Fails if the tag already exists locally or on origin.
-  3. Packs and uploads the `.nupkg` artifact.
-  4. Publish job uses the `github-packages` environment, which requires approval. It re-checks the tag, pushes to `https://nuget.pkg.github.com/<owner>/index.json` with `GITHUB_TOKEN` (`packages: write`), then creates and pushes annotated tag `vX.Y.Z`.
-- **Pre-release** (`prerelease.yml`, on push to any branch except `main`): version `X.Y.(Z+1)-alpha.<run_id>.<run_attempt>`. Publishes through the same protected environment. Creates no tags. No title validation.
+- **PR titles** (`build-validation.yml`, job `Validate PR title`, on PR opened/synchronize/reopened/edited): `[Work-Item-ID] type[!]: description`. ID matches `[A-Za-z0-9][A-Za-z0-9._-]*`. Types: `feat`, `fix`, `bug`, `refactor`, `perf`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert`.
+- **Bump rules (stable `main`):** `!` → major; `feat` → minor; `fix`/`bug` → patch; other types (including `refactor`, `perf`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert`) → no release; the title is validated and nothing is published. A `!` on any type (for example `refactor!`) is major and publishes.
+- **Publish workflow** (`publish.yml`) has two triggers:
+  - **Stable:** `pull_request` closed, merged into `main`. Version source: the PR title, bumped from the highest stable `vX.Y.Z` tag (pre-release tags ignored; 0.0.0 if none). Fails if the tag already exists locally or on origin.
+  - **Alpha:** `push` to any branch except `main`. Version source: the last stable tag plus one patch, suffixed `-alpha.<run_id>.<run_attempt>`. No PR title is read, because pushes carry no PR data; the run id keeps versions unique and increasing. Creates no tags.
+- **Pipeline order** (both triggers):
+  1. `plan` decides the channel and version. For a PR, a title that fails validation fails here and stops the run.
+  2. `build-test` runs restore, build, and test on Windows, macOS, and Linux, plus the Windows wrapper check. It is not gated by approval.
+  3. `package` packs `Mde.Tool` with the computed version and uploads the `.nupkg` artifact. Runs only if all `build-test` legs passed.
+  4. `publish-stable` or `publish-alpha` runs in the protected `github-packages` environment and waits for approval. Only these jobs use the environment. A failed validation or pack step means no publish job starts.
+- **Stable publish** re-checks the tag, pushes to `https://nuget.pkg.github.com/<owner>/index.json` with `GITHUB_TOKEN` (`packages: write`), then creates and pushes annotated tag `vX.Y.Z` (`contents: write`).
+- **Alpha publish** pushes to the same feed with `packages: write` only (`contents: read`). Creates no tags.
 - **Known limitation:** publish and tag are not atomic. If the tag push fails after a successful publish, re-runs collide on the feed. Recovery: create the tag manually at the published commit.
 - Approval is the control point: a maintainer approves the `github-packages` deployment before any package reaches the feed.
 - **Admin setup** (repository settings, not in YAML): Settings → Environments → `github-packages`:
   1. Add **Required reviewers**; workflow YAML cannot name reviewers.
   2. Under **Deployment branches and tags**, allow all branches, because alpha builds publish from any non-`main` branch. An allow-list blocks alpha publishing for unlisted branches.
-- Make the `PR title` workflow a required status check in branch protection so invalid titles cannot merge.
+- Make the `Validate PR title` and the three `Build and test (...)` checks required status checks in branch protection so invalid titles and failing builds cannot merge.
