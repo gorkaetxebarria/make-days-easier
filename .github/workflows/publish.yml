@@ -1,0 +1,250 @@
+name: Publish
+
+# Publishes mde packages. Each run repeats restore/build/test on Windows, macOS,
+# and Linux, packs the tool only if every leg passed, then waits for approval from
+# the protected "github-packages" Environment before pushing to GitHub Packages.
+#
+#   Stable: a PR merged into main. Version = highest stable vX.Y.Z tag bumped by the
+#           PR title (! -> major, feat -> minor, fix/bug -> patch; other types publish nothing).
+#           Creates an annotated vX.Y.Z tag after a successful push.
+#   Alpha:  a push to any branch except main. Version = X.Y.(Z+1)-alpha.<run_id>.<run_attempt>.
+#           The title is not read because pushes carry no PR data; creates no tags.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  push:
+    branches-ignore: [main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && 'publish-stable' || format('publish-alpha-{0}', github.ref) }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan publication
+    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+    outputs:
+      channel: ${{ steps.plan.outputs.channel }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Plan channel and version
+        id: plan
+        run: |
+          channel=none
+          bump=none
+          version=""
+          tag=""
+          if [[ $EVENT_NAME == push ]]; then
+            channel=alpha
+            bump=alpha
+            version="$(scripts/release/next-version.sh alpha "${RUN_ID}.${RUN_ATTEMPT}")"
+          else
+            result="$(scripts/release/pr-title.sh "$PR_TITLE")"
+            bump="${result#bump=}"
+            if [[ $bump == none ]]; then
+              echo "PR type does not map to a release; title validated, nothing published." >> "$GITHUB_STEP_SUMMARY"
+            else
+              channel=stable
+              version="$(scripts/release/next-version.sh "$bump")"
+              tag="v${version}"
+              remote_tag="$(git ls-remote --tags origin "refs/tags/${tag}")"
+              if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || [[ -n "$remote_tag" ]]; then
+                echo "error: tag ${tag} already exists; refusing to build a duplicate release" >&2
+                exit 1
+              fi
+            fi
+          fi
+          {
+            echo "channel=${channel}"
+            echo "bump=${bump}"
+            echo "version=${version}"
+            echo "tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+  build-test:
+    name: Build and test (${{ matrix.os }})
+    needs: plan
+    if: needs.plan.result == 'success' && needs.plan.outputs.channel != 'none'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Mde.slnx
+
+      - name: Build
+        run: dotnet build Mde.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Mde.slnx --configuration Release --no-restore
+
+      - name: Exercise PowerShell directory wrapper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'mde-wrapper-target'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          . scripts/shell/mde-pr.ps1
+          function global:mde {
+            '{"schemaVersion":1,"repositoryPath":"' + $target.Replace('\', '\\') + '"}'
+            $global:LASTEXITCODE = 0
+          }
+          mde-pr 42
+          if ((Get-Location).Path -ne $target) { throw 'mde-pr did not change to the successful repository path.' }
+          Set-Location $env:GITHUB_WORKSPACE
+          function global:mde { $global:LASTEXITCODE = 7 }
+          mde-pr 42
+          if ($LASTEXITCODE -ne 7) { throw 'mde-pr did not preserve the failed command exit code.' }
+          $global:LASTEXITCODE = 0
+          if ((Get-Location).Path -ne $env:GITHUB_WORKSPACE) { throw 'mde-pr changed directory after a failed command.' }
+
+  package:
+    name: Pack global tool
+    needs: [plan, build-test]
+    if: needs.plan.result == 'success' && needs.plan.outputs.channel != 'none' && needs.build-test.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Pack global tool
+        run: dotnet pack src/Mde.Tool/Mde.Tool.csproj --configuration Release --output artifacts -p:PackageVersion="$VERSION"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg
+          if-no-files-found: error
+
+  publish-stable:
+    name: Publish stable package (approval required)
+    needs: [plan, build-test, package]
+    if: needs.plan.result == 'success' && needs.plan.outputs.channel == 'stable' && needs.build-test.result == 'success' && needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: github-packages
+    permissions:
+      contents: write   # push the annotated vX.Y.Z tag
+      packages: write   # push the .nupkg to GitHub Packages
+    env:
+      PACKAGE_OWNER: ${{ github.repository_owner }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts
+
+      - name: Re-check tag is still free
+        run: |
+          remote_tag="$(git ls-remote --tags origin "refs/tags/${TAG}")"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null || [[ -n "$remote_tag" ]]; then
+            echo "error: tag ${TAG} already exists; refusing to publish" >&2
+            exit 1
+          fi
+
+      - name: Publish to GitHub Packages
+        env:
+          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${PACKAGE_OWNER,,}"
+          dotnet nuget push "artifacts/Mde.Tool.${VERSION}.nupkg" \
+            --source "https://nuget.pkg.github.com/${owner}/index.json" \
+            --api-key "$NUGET_API_KEY"
+
+      - name: Create and push annotated tag
+        run: |
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "$TAG" -m "Release $TAG" HEAD
+          git push origin "refs/tags/${TAG}"
+
+  publish-alpha:
+    name: Publish alpha package (approval required)
+    needs: [plan, build-test, package]
+    if: needs.plan.result == 'success' && needs.plan.outputs.channel == 'alpha' && needs.build-test.result == 'success' && needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: github-packages
+    permissions:
+      contents: read
+      packages: write   # push the .nupkg to GitHub Packages
+    env:
+      PACKAGE_OWNER: ${{ github.repository_owner }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts
+
+      - name: Publish to GitHub Packages
+        env:
+          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${PACKAGE_OWNER,,}"
+          dotnet nuget push "artifacts/Mde.Tool.${VERSION}.nupkg" \
+            --source "https://nuget.pkg.github.com/${owner}/index.json" \
+            --api-key "$NUGET_API_KEY"

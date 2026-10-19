@@ -1,0 +1,82 @@
+name: Build validation
+
+# Runs on every pull request update. Validates the PR title convention and
+# restores, builds, and tests on Windows, macOS, and Linux. Never packages or publishes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+concurrency:
+  group: build-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate title format
+        run: scripts/release/pr-title.sh "$PR_TITLE"
+
+  build-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Mde.slnx
+
+      - name: Build
+        run: dotnet build Mde.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Mde.slnx --configuration Release --no-restore
+
+      - name: Exercise PowerShell directory wrapper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'mde-wrapper-target'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          . scripts/shell/mde-pr.ps1
+          function global:mde {
+            '{"schemaVersion":1,"repositoryPath":"' + $target.Replace('\', '\\') + '"}'
+            $global:LASTEXITCODE = 0
+          }
+          mde-pr 42
+          if ((Get-Location).Path -ne $target) { throw 'mde-pr did not change to the successful repository path.' }
+          Set-Location $env:GITHUB_WORKSPACE
+          function global:mde { $global:LASTEXITCODE = 7 }
+          mde-pr 42
+          if ($LASTEXITCODE -ne 7) { throw 'mde-pr did not preserve the failed command exit code.' }
+          $global:LASTEXITCODE = 0
+          if ((Get-Location).Path -ne $env:GITHUB_WORKSPACE) { throw 'mde-pr changed directory after a failed command.' }
