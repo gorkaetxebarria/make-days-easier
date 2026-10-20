@@ -25,17 +25,17 @@ public sealed class RepositoryPreparationTests {
     }
 
     [Fact]
-    public async Task Missing_repository_clones_only_into_current_directory_then_fetches_and_tracks_source_branch() {
+    public async Task Missing_repository_clones_into_same_named_subfolder_then_fetches_and_tracks_source_branch() {
         var git = new FakeGitClient();
         var result = await new PullRequestRepositoryPreparer(git, new FakeFileSystem(Cwd))
             .PrepareAsync(new RepositoryPreparationRequest("repo", CloneUrl, "refs/heads/feature/work"));
 
         Assert.True(result.Success);
-        Assert.Equal(Cwd, result.RepositoryPath);
-        Assert.Contains($"clone:{CloneUrl}:{Cwd}", git.Calls);
-        Assert.Contains($"dirty:{Cwd}", git.Calls);
-        Assert.Contains($"fetch:{Cwd}:origin:refs/heads/feature/work", git.Calls);
-        Assert.Contains($"checkout:{Cwd}:origin:refs/heads/feature/work:feature/work", git.Calls);
+        Assert.Equal(Repository, result.RepositoryPath);
+        Assert.Contains($"clone:{CloneUrl}:{Repository}", git.Calls);
+        Assert.Contains($"dirty:{Repository}", git.Calls);
+        Assert.Contains($"fetch:{Repository}:origin:refs/heads/feature/work", git.Calls);
+        Assert.Contains($"checkout:{Repository}:origin:refs/heads/feature/work:feature/work", git.Calls);
     }
 
     [Fact]
@@ -106,6 +106,21 @@ public sealed class RepositoryPreparationTests {
         Assert.Equal("git-command-failed", result.Failure!.Code);
         Assert.Equal("Failed to fetch the pull request source branch.", result.Failure.Message);
         Assert.DoesNotContain(git.Calls, call => call.StartsWith("checkout:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Missing_repository_clone_failure_reports_safe_target_and_next_step() {
+        var git = new FakeGitClient {
+            CloneResult = GitCommandResult.Failed("git-command-failed", "clone failed", "fatal: destination path 'repo' already exists and is not an empty directory.")
+        };
+        var result = await new PullRequestRepositoryPreparer(git, new FakeFileSystem(Cwd))
+            .PrepareAsync(new RepositoryPreparationRequest("repo", CloneUrl, "refs/heads/feature/work"));
+
+        Assert.False(result.Success);
+        Assert.Equal("git-command-failed", result.Failure!.Code);
+        Assert.Contains(Repository, result.Failure.Message);
+        Assert.Contains("missing or empty", result.Failure.Message);
+        Assert.Contains($"clone:{CloneUrl}:{Repository}", git.Calls);
     }
 
     [Theory]
