@@ -70,6 +70,32 @@ public sealed class RepositoryPreparationTests {
     }
 
     [Fact]
+    public async Task Dirty_repository_is_stashed_then_checked_out_when_user_confirms() {
+        var git = LocalRepository(CloneUrl);
+        git.DirtyResult = GitCommandResult<bool>.Succeeded(true);
+        var result = await new PullRequestRepositoryPreparer(git, new FakeFileSystem(Cwd))
+            .PrepareAsync(new RepositoryPreparationRequest("repo", CloneUrl, "refs/heads/feature/work", _ => Task.FromResult(true)));
+
+        Assert.True(result.Success);
+        var stash = git.Calls.FindIndex(c => c.StartsWith("stash:", StringComparison.Ordinal));
+        var checkout = git.Calls.FindIndex(c => c.StartsWith("checkout:", StringComparison.Ordinal));
+        Assert.True(stash >= 0 && stash < checkout);
+    }
+
+    [Fact]
+    public async Task Dirty_repository_stops_when_user_declines_stash() {
+        var git = LocalRepository(CloneUrl);
+        git.DirtyResult = GitCommandResult<bool>.Succeeded(true);
+        var result = await new PullRequestRepositoryPreparer(git, new FakeFileSystem(Cwd))
+            .PrepareAsync(new RepositoryPreparationRequest("repo", CloneUrl, "refs/heads/feature/work", _ => Task.FromResult(false)));
+
+        Assert.False(result.Success);
+        Assert.Equal("repo-dirty-worktree", result.Failure!.Code);
+        Assert.DoesNotContain(git.Calls, call => call.StartsWith("stash:", StringComparison.Ordinal)
+                                           || call.StartsWith("checkout:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Git_fetch_failure_does_not_attempt_checkout() {
         var git = LocalRepository(CloneUrl);
         git.FetchResult = GitCommandResult.Failed("git-command-failed", "network denied", "fatal: auth");

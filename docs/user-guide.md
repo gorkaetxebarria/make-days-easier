@@ -147,7 +147,7 @@ What it does:
    - If your current folder is a clone of the same repository, it uses that folder.
    - Otherwise, if a folder with the repository's name exists here and is a clone of the same repository, it uses that folder.
    - Otherwise it clones the repository **into the current folder**. The current folder must be **empty**; otherwise Git refuses to clone.
-3. Stops if the working tree has uncommitted or untracked changes.
+3. If the working tree has uncommitted or untracked changes, asks whether to stash them (interactive text mode only); stops if you decline or the session is not interactive.
 4. Fetches the pull request's source branch and checks it out.
 5. Opens the repository in your IDE.
 6. Prints a summary and the repository path.
@@ -156,7 +156,7 @@ What it does:
 
 | Option | Values | Default | Meaning |
 | --- | --- | --- | --- |
-| `--ide` | `code`, `vs` | `code` | `code` opens VS Code. `vs` opens Visual Studio and works only on Windows. |
+| `--ide` | `code`, `insiders`, `vs` | `code` | `code` opens VS Code, `insiders` opens VS Code Insiders (`code-insiders`). `vs` opens Visual Studio and works only on Windows. |
 | `--output` | `text`, `json` | `text` | `json` prints machine-readable output (section 6). |
 
 Examples:
@@ -164,6 +164,7 @@ Examples:
 ```bash
 mde pr <id>
 mde pr <id> --ide code
+mde pr <id> --ide insiders
 mde pr <id> --ide vs          # Windows only
 mde pr <id> --output json
 ```
@@ -171,7 +172,7 @@ mde pr <id> --output json
 ### Safety behavior
 
 - **Folder collision:** If a folder with the repository's name exists but is a different repository, `mde` stops and changes nothing. Move or rename that folder, then run the command again.
-- **Dirty working tree:** If your repository has uncommitted or untracked changes, `mde` stops before fetching or checking out anything. Commit or stash your changes yourself. `mde` never discards changes.
+- **Dirty working tree:** If your repository has uncommitted or untracked changes, `mde` asks whether to stash them (`git stash push --include-untracked`) before fetching or checking out. Restore them later with `git stash pop`. If you decline, or the session is non-interactive or uses `--output json`, `mde` stops and changes nothing. `mde` never discards changes.
 - **Visual Studio on macOS or Linux:** `--ide vs` fails immediately with exit code 1, before any network call.
 - **No solution for `--ide vs`:** On Windows, if no `.sln` or `.slnx` file is found in the repository root or one folder below it, `mde` prints that it is falling back to VS Code and opens VS Code.
 - **IDE not opening:** If the IDE fails to start, `mde` prints a warning and still succeeds, because the repository is ready. Open the printed path manually.

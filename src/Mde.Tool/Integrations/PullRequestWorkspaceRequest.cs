@@ -7,4 +7,6 @@ public sealed record PullRequestWorkspaceRequest(
     int PullRequestId,
     PreferredIde? PreferredIde = null,
     string? SolutionPath = null,
-    bool LaunchIde = false);
+    bool LaunchIde = false,
+    Func<CancellationToken, Task<bool>>? ConfirmStashAsync = null,
+    Action<string>? Log = null);

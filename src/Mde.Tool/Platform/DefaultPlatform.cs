@@ -28,7 +28,16 @@ public sealed class DefaultPlatform : IPlatform
     {
         ArgumentNullException.ThrowIfNull(startInfo);
 
-        var processStartInfo = new ProcessStartInfo(startInfo.FileName)
+        var fileName = startInfo.FileName;
+        var launcherArguments = new List<string>();
+        if (OperatingSystem.IsWindows() && ResolveWindowsScript(fileName) is { } script)
+        {
+            // Process.Start cannot launch .cmd/.bat shims (e.g. az.cmd) without a shell.
+            launcherArguments.AddRange(["/c", script]);
+            fileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+        }
+
+        var processStartInfo = new ProcessStartInfo(fileName)
         {
             RedirectStandardOutput = startInfo.RedirectStandardOutput,
             RedirectStandardError = startInfo.RedirectStandardError,
@@ -36,7 +45,7 @@ public sealed class DefaultPlatform : IPlatform
             WorkingDirectory = startInfo.WorkingDirectory ?? Environment.CurrentDirectory
         };
 
-        foreach (var argument in startInfo.Arguments)
+        foreach (var argument in launcherArguments.Concat(startInfo.Arguments))
         {
             processStartInfo.ArgumentList.Add(argument);
         }
@@ -60,4 +69,36 @@ public sealed class DefaultPlatform : IPlatform
     }
 
     public IReadOnlyList<IdeInstallation> DetectInstalledIdes() => [];
+
+    private static string? ResolveWindowsScript(string fileName)
+    {
+        if (Path.HasExtension(fileName))
+        {
+            return fileName.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
+                || fileName.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)
+                ? fileName
+                : null;
+        }
+
+        var directories = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var directory in directories)
+        {
+            if (File.Exists(Path.Combine(directory, fileName + ".exe")))
+            {
+                return null;
+            }
+
+            foreach (var extension in new[] { ".cmd", ".bat" })
+            {
+                var candidate = Path.Combine(directory, fileName + extension);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
 }

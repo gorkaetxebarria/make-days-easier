@@ -4,5 +4,6 @@ public enum PreferredIde
 {
     VisualStudioCode,
     VisualStudio,
-    Rider
+    Rider,
+    VisualStudioCodeInsiders
 }

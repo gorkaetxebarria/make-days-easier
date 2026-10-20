@@ -34,7 +34,7 @@ public sealed class IdeLauncher(
         }
 
         return await TryLaunchAsync(
-            "code",
+            request.PreferredIde == PreferredIde.VisualStudioCodeInsiders ? "code-insiders" : "code",
             [request.WorkingDirectory],
             request.WorkingDirectory,
             "vscode-launch-failed",
