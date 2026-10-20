@@ -13,7 +13,10 @@ dotnet restore Mde.slnx
 dotnet build Mde.slnx -c Release --no-restore
 dotnet test Mde.slnx -c Release --no-restore
 dotnet pack src/Mde.Tool/Mde.Tool.csproj -c Release -o artifacts -p:PackageVersion=0.1.0
+dotnet tool install --global Mde.Tool --version 0.1.0 --add-source artifacts
 ```
+
+Run these from the repository root. The last command installs the package you just packed from `artifacts/`; if a global `Mde.Tool` is already installed, run `dotnet tool uninstall --global Mde.Tool` first.
 
 The test suite (24 fake-driven tests) never contacts Azure DevOps or reads credentials. CI runs it on Ubuntu, macOS, and Windows; see the [technical reference](docs/technical-reference.md#11-testing).
 
