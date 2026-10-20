@@ -63,6 +63,23 @@ public sealed class GitClient(IProcessLauncher processLauncher) : IGitClient
         return GitCommandResult<bool>.Succeeded(!string.IsNullOrWhiteSpace(result.Value));
     }
 
+    public async Task<GitCommandResult> StashAsync(
+        string repositoryPath,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await RunGitAsync(
+            ["-C", repositoryPath, "stash", "push", "--include-untracked", "--message", "mde: stashed before checking out a pull request"],
+            repositoryPath,
+            cancellationToken);
+
+        return result.Success
+            ? GitCommandResult.Succeeded()
+            : GitCommandResult.Failed(
+                result.Failure!.Code,
+                result.Failure.Message,
+                result.Failure.Details);
+    }
+
     public async Task<GitCommandResult> CloneIntoDirectoryAsync(
         string remoteUrl,
         string destinationDirectory,
