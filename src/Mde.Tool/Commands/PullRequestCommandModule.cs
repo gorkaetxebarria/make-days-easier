@@ -31,7 +31,7 @@ public sealed class PullRequestCommandModule(
     {
         var command = new Command(
             "pr",
-            "Prepare an Azure DevOps pull request locally: clone into the current directory if needed, check out its source branch, and open an IDE.");
+            "Prepare an Azure DevOps pull request locally: clone into a same-named folder when needed, check out its source branch, and open an IDE.");
 
         var idArgument = new Argument<int>("id")
         {

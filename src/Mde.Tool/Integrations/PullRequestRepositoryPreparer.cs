@@ -66,20 +66,21 @@ public sealed class PullRequestRepositoryPreparer(
 
         if (repositoryPath is null)
         {
-            request.Log?.Invoke($"No local clone found; cloning into '{currentDirectory}'...");
+            var cloneTargetPath = sameNamedFolderPath;
+            request.Log?.Invoke($"No local clone found; cloning into '{cloneTargetPath}'...");
             var cloneResult = await gitClient.CloneIntoDirectoryAsync(
                 request.CloneUrl,
-                currentDirectory,
+                cloneTargetPath,
                 cancellationToken);
             if (!cloneResult.Success)
             {
                 return RepositoryPreparationResult.Failed(
                     cloneResult.Failure!.Code,
-                    "Failed to clone the pull request repository into the current directory.",
+                    $"Failed to clone the pull request repository into '{cloneTargetPath}'. Ensure that the folder is missing or empty, then run the command from your workspace root.",
                     cloneResult.Failure.Details);
             }
 
-            repositoryPath = currentDirectory;
+            repositoryPath = cloneTargetPath;
         }
 
         request.Log?.Invoke("Checking the working tree for uncommitted changes...");
