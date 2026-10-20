@@ -18,6 +18,7 @@ public sealed class PullRequestRepositoryPreparer(
         }
 
         var currentDirectory = fileSystem.GetCurrentDirectory();
+        request.Log?.Invoke($"Looking for a local clone in '{currentDirectory}'...");
 
         var currentDirectoryMatch = await TryMatchRepositoryAsync(
             currentDirectory,
@@ -58,8 +59,14 @@ public sealed class PullRequestRepositoryPreparer(
             repositoryPath = subfolderMatch.Value;
         }
 
+        if (repositoryPath is not null)
+        {
+            request.Log?.Invoke($"Using existing clone at '{repositoryPath}'.");
+        }
+
         if (repositoryPath is null)
         {
+            request.Log?.Invoke($"No local clone found; cloning into '{currentDirectory}'...");
             var cloneResult = await gitClient.CloneIntoDirectoryAsync(
                 request.CloneUrl,
                 currentDirectory,
@@ -75,6 +82,7 @@ public sealed class PullRequestRepositoryPreparer(
             repositoryPath = currentDirectory;
         }
 
+        request.Log?.Invoke("Checking the working tree for uncommitted changes...");
         var dirtyCheck = await gitClient.IsWorkingTreeDirtyAsync(repositoryPath, cancellationToken);
         if (!dirtyCheck.Success)
         {
@@ -86,11 +94,25 @@ public sealed class PullRequestRepositoryPreparer(
 
         if (dirtyCheck.Value)
         {
-            return RepositoryPreparationResult.Failed(
-                "repo-dirty-worktree",
-                "Repository has uncommitted changes. Commit or stash them before running this command.");
+            if (request.ConfirmStashAsync is null || !await request.ConfirmStashAsync(cancellationToken))
+            {
+                return RepositoryPreparationResult.Failed(
+                    "repo-dirty-worktree",
+                    "Repository has uncommitted changes. Commit or stash them before running this command.");
+            }
+
+            request.Log?.Invoke("Stashing uncommitted changes...");
+            var stashResult = await gitClient.StashAsync(repositoryPath, cancellationToken);
+            if (!stashResult.Success)
+            {
+                return RepositoryPreparationResult.Failed(
+                    stashResult.Failure!.Code,
+                    "Failed to stash the uncommitted changes.",
+                    stashResult.Failure.Details);
+            }
         }
 
+        request.Log?.Invoke($"Fetching {request.SourceRef} from origin...");
         var fetchResult = await gitClient.FetchAsync(
             repositoryPath,
             "origin",
@@ -105,6 +127,7 @@ public sealed class PullRequestRepositoryPreparer(
         }
 
         var localBranchName = ToLocalBranchName(request.SourceRef);
+        request.Log?.Invoke($"Checking out '{localBranchName}'...");
         var checkoutResult = await gitClient.CheckoutTrackingBranchAsync(
             repositoryPath,
             "origin",

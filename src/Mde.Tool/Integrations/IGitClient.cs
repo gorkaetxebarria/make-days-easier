@@ -15,6 +15,10 @@ public interface IGitClient
         string repositoryPath,
         CancellationToken cancellationToken = default);
 
+    Task<GitCommandResult> StashAsync(
+        string repositoryPath,
+        CancellationToken cancellationToken = default);
+
     Task<GitCommandResult> CloneIntoDirectoryAsync(
         string remoteUrl,
         string destinationDirectory,

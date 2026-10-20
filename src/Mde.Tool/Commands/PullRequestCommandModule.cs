@@ -23,6 +23,7 @@ public sealed class PullRequestCommandModule(
 
     private const string CodeIde = "code";
     private const string VisualStudioIde = "vs";
+    private const string InsidersIde = "insiders";
     private const string TextOutput = "text";
     private const string JsonOutput = "json";
 
@@ -46,10 +47,10 @@ public sealed class PullRequestCommandModule(
 
         var ideOption = new Option<string>("--ide")
         {
-            Description = "IDE to open after preparing the repository: 'code' (VS Code) or 'vs' (Visual Studio, Windows only; falls back to VS Code when no .sln/.slnx exists).",
+            Description = "IDE to open after preparing the repository: 'code' (VS Code), 'insiders' (VS Code Insiders) or 'vs' (Visual Studio, Windows only; falls back to VS Code when no .sln/.slnx exists).",
             DefaultValueFactory = _ => CodeIde
         };
-        ideOption.AcceptOnlyFromAmong(CodeIde, VisualStudioIde);
+        ideOption.AcceptOnlyFromAmong(CodeIde, InsidersIde, VisualStudioIde);
 
         var outputOption = new Option<string>("--output")
         {
@@ -94,7 +95,15 @@ public sealed class PullRequestCommandModule(
             }
 
             var result = await workspaceService.PrepareAsync(
-                new PullRequestWorkspaceRequest(organization, id),
+                new PullRequestWorkspaceRequest(
+                    organization,
+                    id,
+                    ConfirmStashAsync: platform.IsInteractiveTerminal() && !json
+                        ? _ => Task.FromResult(ui.Confirm(
+                            "Repository has uncommitted changes. Stash them (including untracked files) and continue? Restore later with [grey]git stash pop[/].",
+                            false))
+                        : null,
+                    Log: message => ui.MarkupLine($"[grey]{Markup.Escape(message)}[/]")),
                 cancellationToken);
             if (!result.Success)
             {
@@ -146,8 +155,10 @@ public sealed class PullRequestCommandModule(
 
     private async Task LaunchIdeAsync(IAnsiConsole ui, string ide, string repositoryPath, CancellationToken cancellationToken)
     {
-        var request = new IdeLaunchRequest(repositoryPath);
-        var label = "VS Code";
+        var request = ide == InsidersIde
+            ? new IdeLaunchRequest(repositoryPath, PreferredIde.VisualStudioCodeInsiders)
+            : new IdeLaunchRequest(repositoryPath);
+        var label = ide == InsidersIde ? "VS Code Insiders" : "VS Code";
 
         if (ide == VisualStudioIde)
         {
@@ -163,6 +174,7 @@ public sealed class PullRequestCommandModule(
             }
         }
 
+        ui.MarkupLine($"[grey]Opening {Markup.Escape(label)}...[/]");
         IdeLaunchResult launch;
         try
         {

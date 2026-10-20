@@ -11,6 +11,7 @@ public sealed class PullRequestWorkspaceService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        request.Log?.Invoke($"Reading pull request {request.PullRequestId} from '{request.Organization}'...");
         var pullRequestResult = await pullRequestClient.GetPullRequestAsync(
             new AdoPullRequestLookupRequest(request.Organization, request.PullRequestId),
             cancellationToken);
@@ -23,11 +24,14 @@ public sealed class PullRequestWorkspaceService(
         }
 
         var pullRequest = pullRequestResult.PullRequest!;
+        request.Log?.Invoke($"Found '{pullRequest.RepositoryName}' (source {pullRequest.SourceRef}, target {pullRequest.TargetBranch}).");
         var repositoryResult = await repositoryPreparer.PrepareAsync(
             new RepositoryPreparationRequest(
                 pullRequest.RepositoryName,
                 pullRequest.CloneUrl,
-                pullRequest.SourceRef),
+                pullRequest.SourceRef,
+                request.ConfirmStashAsync,
+                request.Log),
             cancellationToken);
         if (!repositoryResult.Success)
         {
@@ -40,6 +44,7 @@ public sealed class PullRequestWorkspaceService(
         var warnings = new List<string>();
         if (request.LaunchIde)
         {
+            request.Log?.Invoke("Launching IDE...");
             var ideResult = await ideLauncher.LaunchAsync(
                 new IdeLaunchRequest(
                     repositoryResult.RepositoryPath!,

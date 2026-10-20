@@ -27,6 +27,13 @@ internal sealed class FakeGitClient : IGitClient {
         return Task.FromResult(DirtyResult);
     }
 
+    public GitCommandResult StashResult { get; set; } = GitCommandResult.Succeeded();
+
+    public Task<GitCommandResult> StashAsync(string repositoryPath, CancellationToken cancellationToken = default) {
+        Calls.Add($"stash:{repositoryPath}");
+        return Task.FromResult(StashResult);
+    }
+
     public Task<GitCommandResult> CloneIntoDirectoryAsync(string remoteUrl, string destinationDirectory, CancellationToken cancellationToken = default) {
         Calls.Add($"clone:{remoteUrl}:{destinationDirectory}");
         return Task.FromResult(CloneResult);
