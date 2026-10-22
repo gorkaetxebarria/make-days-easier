@@ -12,11 +12,11 @@
 
 | Name | Role | Charter | Status |
 |------|------|---------|--------|
-| Lead | Lead/Architect | `.squad/agents/lead/charter.md` | ✅ Active |
-| CLI | CLI/UX Engineer | `.squad/agents/cli/charter.md` | ✅ Active |
-| Integrations | Integrations Engineer | `.squad/agents/integrations/charter.md` | ✅ Active |
-| Tester | Tester | `.squad/agents/tester/charter.md` | ✅ Active |
-| Release | Release/Docs | `.squad/agents/release/charter.md` | ✅ Active |
+| Lead | Lead/Architect | `.squad/agents/lead/charter.md` | 🏗️ Active |
+| CLI | CLI/UX Engineer | `.squad/agents/cli/charter.md` | ⚛️ Active |
+| Integrations | Integrations Engineer | `.squad/agents/integrations/charter.md` | 🔧 Active |
+| Tester | Tester | `.squad/agents/tester/charter.md` | 🧪 Active |
+| Release | Release/Docs | `.squad/agents/release/charter.md` | 📝 Active |
 
 ## Built-in Support Agents
 
