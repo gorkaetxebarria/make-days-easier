@@ -51,8 +51,8 @@ tests/Mde.Tool.Tests/             24 fake-driven tests
 ## 5. User configuration and no-secret policy
 
 - Location: `Environment.GetFolderPath(SpecialFolder.ApplicationData)` + `mde/config.json`. On macOS this resolves to `~/Library/Application Support/mde/config.json`; on Windows it is the roaming AppData folder.
-- Schema (camelCase, indented): `{"azureDevOpsOrganization": string|null, "preferredIde": null}`.
-- Only `azureDevOpsOrganization` is written by `init`. `preferredIde` is reserved: no command sets it yet.
+- Schema (camelCase, indented): `{"azureDevOpsOrganization": string|null, "preferredIde": "visualStudioCode"|"visualStudioCodeInsiders"|"visualStudio"|"rider"|null}`.
+- `init` writes `azureDevOpsOrganization` (`--organization`) and `preferredIde` (`--ide code|insiders|vs|rider|none`, or an interactive prompt with an "Other / skip" choice when `--ide` is omitted in an interactive terminal). Omitted values leave the saved value unchanged. Files that predate `preferredIde` load with it as null. No command consumes it yet.
 - Organization names are validated against `^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$`; URLs and e-mail addresses are rejected before any write.
 - **No-secret rule:** tokens, passwords, and credentials are never written to config, logs, or output. A test asserts the config JSON contains neither "token" nor "secret".
 - **No telemetry:** the tool sends no usage or diagnostic data anywhere. Its only network traffic is the Azure DevOps REST calls made by `mde pr`.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Mde.Tool.Platform;
 
 namespace Mde.Tool.Configuration;
@@ -9,7 +10,8 @@ public sealed class JsonUserConfigurationStore(IPlatform platform) : IUserConfig
     private const string FileName = "config.json";
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
     public async Task<UserConfiguration> LoadAsync(CancellationToken cancellationToken = default)
