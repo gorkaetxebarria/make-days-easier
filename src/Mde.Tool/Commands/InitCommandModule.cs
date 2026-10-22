@@ -12,20 +12,26 @@ public sealed class InitCommandModule(
 {
     public Command CreateCommand()
     {
-        var command = new Command("init", "Check local Azure CLI readiness and optionally save the default Azure DevOps organization.");
+        var command = new Command("init", "Check local Azure CLI readiness and optionally save the default Azure DevOps organization and preferred IDE.");
         var organizationOption = new Option<string?>("--organization")
         {
             Description = "Default Azure DevOps organization name (not a URL) used by 'mde pr'. Stored as a non-secret setting."
         };
+        var ideOption = new Option<string?>("--ide")
+        {
+            Description = "Preferred IDE to save: code, insiders, vs, rider, or none to clear it. When omitted in an interactive terminal, init asks; otherwise the saved value is left unchanged."
+        };
+        ideOption.AcceptOnlyFromAmong(IdeChoices.Keys.ToArray());
         command.Options.Add(organizationOption);
+        command.Options.Add(ideOption);
 
         command.SetAction(async (parseResult, cancellationToken) =>
-            await ExecuteAsync(parseResult.GetValue(organizationOption), cancellationToken));
+            await ExecuteAsync(parseResult.GetValue(organizationOption), parseResult.GetValue(ideOption), cancellationToken));
 
         return command;
     }
 
-    private async Task<int> ExecuteAsync(string? organization, CancellationToken cancellationToken)
+    private async Task<int> ExecuteAsync(string? organization, string? ide, CancellationToken cancellationToken)
     {
         if (organization is not null)
         {
@@ -41,6 +47,8 @@ public sealed class InitCommandModule(
             await configurationStore.SaveAsync(configuration with { AzureDevOpsOrganization = normalized }, cancellationToken);
             console.MarkupLine($"Default Azure DevOps organization saved: [grey]{Markup.Escape(normalized)}[/]");
         }
+
+        await SavePreferredIdeAsync(ide, cancellationToken);
 
         var cliAvailability = await TryRunAzureCliCommandAsync(
             ["version", "--output", "none", "--only-show-errors"],
@@ -102,6 +110,52 @@ public sealed class InitCommandModule(
         console.MarkupLine("[green]Azure CLI sign-in completed. Initialization succeeded.[/]");
         WriteGitCredentialManagerNotice();
         return 0;
+    }
+
+    private static readonly Dictionary<string, PreferredIde?> IdeChoices = new()
+    {
+        ["code"] = PreferredIde.VisualStudioCode,
+        ["insiders"] = PreferredIde.VisualStudioCodeInsiders,
+        ["vs"] = PreferredIde.VisualStudio,
+        ["rider"] = PreferredIde.Rider,
+        ["none"] = null
+    };
+
+    private const string SkipChoice = "Other / skip";
+
+    private async Task SavePreferredIdeAsync(string? ide, CancellationToken cancellationToken)
+    {
+        if (ide is null)
+        {
+            if (!platform.IsInteractiveTerminal())
+            {
+                return;
+            }
+
+            var labels = new Dictionary<string, string>
+            {
+                ["Visual Studio Code"] = "code",
+                ["Visual Studio Code Insiders"] = "insiders",
+                ["Visual Studio"] = "vs",
+                ["JetBrains Rider"] = "rider"
+            };
+            var selected = console.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Which IDE do you prefer? (saved for later workflows)")
+                    .AddChoices(labels.Keys.Append(SkipChoice)));
+            if (!labels.TryGetValue(selected, out ide))
+            {
+                console.MarkupLine("[grey]Preferred IDE left unchanged.[/]");
+                return;
+            }
+        }
+
+        var preferred = IdeChoices[ide];
+        var configuration = await configurationStore.LoadAsync(cancellationToken);
+        await configurationStore.SaveAsync(configuration with { PreferredIde = preferred }, cancellationToken);
+        console.MarkupLine(preferred is null
+            ? "Preferred IDE cleared."
+            : $"Preferred IDE saved: [grey]{Markup.Escape(preferred.Value.ToString())}[/]");
     }
 
     private async Task<CommandExecutionResult> TryRunAzureCliCommandAsync(

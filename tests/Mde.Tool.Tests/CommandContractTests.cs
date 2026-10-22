@@ -34,6 +34,79 @@ public sealed class CommandContractTests {
     }
 
     [Theory]
+    [InlineData("code", "visualStudioCode")]
+    [InlineData("insiders", "visualStudioCodeInsiders")]
+    [InlineData("vs", "visualStudio")]
+    [InlineData("rider", "rider")]
+    public async Task Init_persists_the_selected_ide_and_keeps_the_organization(string ide, string expected) {
+        var directory = CreateScratchDirectory();
+        try {
+            var platform = new FakePlatform { ConfigurationDirectory = directory };
+            var store = new JsonUserConfigurationStore(platform);
+            await store.SaveAsync(new UserConfiguration("contoso"));
+            var app = new CommandApplication([new InitCommandModule(ConsoleFor(new StringWriter()), platform, store)]);
+
+            Assert.Equal(0, await app.InvokeAsync(["init", "--ide", ide]));
+
+            using var config = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(directory, "config.json")));
+            Assert.Equal(expected, config.RootElement.GetProperty("preferredIde").GetString());
+            Assert.Equal("contoso", config.RootElement.GetProperty("azureDevOpsOrganization").GetString());
+        }
+        finally { DeleteScratchDirectory(directory); }
+    }
+
+    [Fact]
+    public async Task Init_without_ide_succeeds_and_leaves_the_saved_ide_unchanged() {
+        var directory = CreateScratchDirectory();
+        try {
+            var platform = new FakePlatform { ConfigurationDirectory = directory };
+            var store = new JsonUserConfigurationStore(platform);
+            await store.SaveAsync(new UserConfiguration("contoso", PreferredIde.Rider));
+            var app = new CommandApplication([new InitCommandModule(ConsoleFor(new StringWriter()), platform, store)]);
+
+            Assert.Equal(0, await app.InvokeAsync(["init"]));
+            Assert.Equal(PreferredIde.Rider, (await store.LoadAsync()).PreferredIde);
+
+            Assert.Equal(0, await app.InvokeAsync(["init", "--ide", "none"]));
+            Assert.Null((await store.LoadAsync()).PreferredIde);
+        }
+        finally { DeleteScratchDirectory(directory); }
+    }
+
+    [Fact]
+    public async Task Legacy_configuration_without_preferred_ide_loads_and_init_adds_it() {
+        var directory = CreateScratchDirectory();
+        try {
+            var platform = new FakePlatform { ConfigurationDirectory = directory };
+            await File.WriteAllTextAsync(Path.Combine(directory, "config.json"), "{\"azureDevOpsOrganization\":\"legacy\"}");
+            var store = new JsonUserConfigurationStore(platform);
+
+            var legacy = await store.LoadAsync();
+            Assert.Equal("legacy", legacy.AzureDevOpsOrganization);
+            Assert.Null(legacy.PreferredIde);
+
+            var app = new CommandApplication([new InitCommandModule(ConsoleFor(new StringWriter()), platform, store)]);
+            Assert.Equal(0, await app.InvokeAsync(["init", "--ide", "code"]));
+            var updated = await store.LoadAsync();
+            Assert.Equal("legacy", updated.AzureDevOpsOrganization);
+            Assert.Equal(PreferredIde.VisualStudioCode, updated.PreferredIde);
+        }
+        finally { DeleteScratchDirectory(directory); }
+    }
+
+    [Fact]
+    public async Task Init_rejects_unknown_ide_without_writing_configuration() {
+        var directory = CreateScratchDirectory();
+        try {
+            var platform = new FakePlatform { ConfigurationDirectory = directory };
+            var app = new CommandApplication([new InitCommandModule(ConsoleFor(new StringWriter()), platform, new JsonUserConfigurationStore(platform))]);
+
+            Assert.NotEqual(0, await app.InvokeAsync(["init", "--ide", "emacs"]));
+            Assert.False(File.Exists(Path.Combine(directory, "config.json")));
+        }
+        finally { DeleteScratchDirectory(directory); }
+    }
+    [Theory]
     [InlineData("https://dev.azure.com/contoso")]
     [InlineData("contoso@example.com")]
     public async Task Init_rejects_URL_like_organization_without_writing_configuration(string organization) {
