@@ -104,7 +104,7 @@ Releases are published only after a maintainer approves the `github-packages` de
    mde init --organization <org>
    ```
 
-   `mde init` checks that the name is valid, saves it, and checks Azure CLI. If you are not signed in, it asks whether to start `az login` now (default: no). In a script or other non-interactive session it prints guidance and exits with an error instead.
+   `mde init` checks that the name is valid, saves it, and checks Azure CLI. In an interactive terminal it also asks for your preferred IDE (VS Code, VS Code Insiders, Visual Studio, Rider, or `Other / skip`, which leaves the saved value unchanged). In scripts, pass `--ide code|insiders|vs|rider` to save it, or `--ide none` to clear it; when omitted non-interactively, the saved value is unchanged. The setting is only stored for now; `mde pr` still uses `--ide`. If you are not signed in, it asks whether to start `az login` now (default: no). In a script or other non-interactive session it prints guidance and exits with an error instead.
 
 3. Confirm the setup:
 
@@ -122,7 +122,7 @@ Releases are published only after a maintainer approves the `github-packages` de
 
    `mde about` always prints "mde is ready." even if the organization is not configured. Check the organization line.
 
-The configuration file contains only the organization name:
+The configuration file contains only the organization name and preferred IDE:
 
 - macOS: `~/Library/Application Support/mde/config.json`
 - Windows: `%APPDATA%\mde\config.json`
